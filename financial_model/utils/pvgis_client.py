@@ -64,9 +64,11 @@ class PVGISClient:
         self.max_retries = max_retries
         self.cache_ttl_days = cache_ttl_days
 
-        # Setup cache directory
+        # Setup cache directory - default to financial_model/data/pvgis_cache
         if cache_dir is None:
-            self.cache_dir = Path.home() / ".cache" / "pvgis"
+            # Use data directory relative to this module
+            module_dir = Path(__file__).parent.parent
+            self.cache_dir = module_dir / "data" / "pvgis_cache"
         else:
             self.cache_dir = Path(cache_dir)
 
