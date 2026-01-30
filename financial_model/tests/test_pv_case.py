@@ -217,44 +217,60 @@ class TestPVEEGBaseCase:
     ) -> None:
         """Test that NPV is calculated (not NaN)."""
         model = FinancialModel(asset_type="pv")
+
+        start = time.time()
         results = model.calculate(pv_eeg_params, pv_monthly_volumes)
+        elapsed_ms = (time.time() - start) * 1000
 
         npv = results["kpis"]["npv_project"]
         # NPV should be a finite number (can be positive or negative)
         assert np.isfinite(npv)
+        print(f"\n  NPV calculation: {elapsed_ms:.2f}ms, NPV={npv:,.0f}€")
 
     def test_pv_eeg_reasonable_irr(
         self, pv_eeg_params: dict, pv_monthly_volumes: np.ndarray
     ) -> None:
         """Test that IRR is in reasonable range."""
         model = FinancialModel(asset_type="pv")
+
+        start = time.time()
         results = model.calculate(pv_eeg_params, pv_monthly_volumes)
+        elapsed_ms = (time.time() - start) * 1000
 
         irr_project = results["kpis"]["irr_project"]
         # IRR should be between 4% and 12% for typical PV project
         assert 0.04 < irr_project < 0.12
+        print(f"\n  IRR calculation: {elapsed_ms:.2f}ms, IRR={irr_project:.2%}")
 
     def test_pv_eeg_dscr_above_minimum(
         self, pv_eeg_params: dict, pv_monthly_volumes: np.ndarray
     ) -> None:
         """Test that DSCR meets typical bank requirements."""
         model = FinancialModel(asset_type="pv")
+
+        start = time.time()
         results = model.calculate(pv_eeg_params, pv_monthly_volumes)
+        elapsed_ms = (time.time() - start) * 1000
 
         # DSCR should be positive (or inf for no debt)
         dscr_min = results["kpis"]["dscr_min"]
         assert dscr_min > 0.5 or dscr_min == float("inf")
+        print(f"\n  DSCR calculation: {elapsed_ms:.2f}ms, DSCR_min={dscr_min:.2f}")
 
     def test_pv_eeg_lcoe_reasonable(
         self, pv_eeg_params: dict, pv_monthly_volumes: np.ndarray
     ) -> None:
         """Test that LCOE is in reasonable range for PV."""
         model = FinancialModel(asset_type="pv")
+
+        start = time.time()
         results = model.calculate(pv_eeg_params, pv_monthly_volumes)
+        elapsed_ms = (time.time() - start) * 1000
 
         lcoe = results["kpis"]["lcoe"]
         # LCOE for PV should be between €0.03 and €0.15/kWh
         assert 0.03 < lcoe < 0.15
+        print(f"\n  LCOE calculation: {elapsed_ms:.2f}ms, LCOE={lcoe:.4f}€/kWh")
 
 
 class TestPerformance:
