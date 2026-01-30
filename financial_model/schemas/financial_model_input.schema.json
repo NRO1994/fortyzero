@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fortyzero.com/schemas/financial_model_input.schema.json",
+  "title": "Financial Model Input Schema",
+  "description": "Vollständiges Eingabeschema für das Finanzmodell zur Berechnung von Energieinfrastruktur-Investitionen. Unterstützt PV, Wind, Wärmenetze und KWK-Anlagen.",
+  "type": "object",
+  "required": ["project", "technical", "financial"],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "object",
+      "description": "Grundlegende Projektinformationen und Laufzeitparameter.",
+      "required": ["asset_type", "lifetime_years"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Bezeichnung des Projekts zur Identifikation.",
+          "examples": ["Solarpark Musterstadt", "Windpark Nordsee"]
+        },
+        "asset_type": {
+          "type": "string",
+          "description": "Art der Energieanlage. Bestimmt Standardwerte für Abschreibung, Steuern und WACC.",
+          "enum": ["pv", "wind", "heat_network", "chp"],
+          "enumDescriptions": {
+            "pv": "Photovoltaik-Anlage (Abschreibung: 20 Jahre, Standard-WACC: 4%)",
+            "wind": "Windkraftanlage (Abschreibung: 20 Jahre, Standard-WACC: 5%)",
+            "heat_network": "Wärmenetz/Fernwärme (Abschreibung: 40 Jahre, Standard-WACC: 6%)",
+            "chp": "Kraft-Wärme-Kopplung (Abschreibung: 15 Jahre, Standard-WACC: 6%)"
+          }
+        },
+        "lifetime_years": {
+          "type": "integer",
+          "description": "Projektlaufzeit in Jahren. Bestimmt die Länge aller Cashflow-Arrays und Berechnungen.",
+          "minimum": 1,
+          "maximum": 50,
+          "examples": [25, 40, 20]
+        },
+        "development_duration_years": {
+          "type": "number",
+          "description": "Dauer der Entwicklungsphase in Jahren (vor Baubeginn). Wird für zeitliche Zuordnung von Entwicklungskosten verwendet.",
+          "minimum": 0,
+          "default": 1,
+          "examples": [0.5, 1, 2]
+        },
+        "construction_duration_years": {
+          "type": "number",
+          "description": "Dauer der Bauphase in Jahren. Bestimmt, wann die Anlage in Betrieb geht.",
+          "minimum": 0,
+          "default": 0.5,
+          "examples": [0.5, 1, 2]
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Geplanter Betriebsbeginn im ISO-Format (YYYY-MM-DD). Dient nur zur Dokumentation, beeinflusst nicht die Berechnung.",
+          "examples": ["2026-07-01", "2027-01-01"]
+        }
+      }
+    },
+    "technical": {
+      "type": "object",
+      "description": "Technische Parameter der Anlage für Produktionsberechnung.",
+      "required": ["capacity"],
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "type": "number",
+          "description": "Installierte Leistung in kW (Kilowatt). Bei PV: kWp (Kilowatt-Peak).",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "examples": [1000, 5000, 10000]
+        },
+        "volume_model_params": {
+          "type": "object",
+          "description": "Parameter für das Produktionsmodell. Die verfügbaren Parameter hängen vom Anlagentyp ab.",
+          "additionalProperties": true,
+          "properties": {
+            "latitude": {
+              "type": "number",
+              "description": "Geografische Breite des Standorts in Dezimalgrad. Erforderlich für PVGIS-basierte Produktionsberechnung.",
+              "minimum": -90,
+              "maximum": 90,
+              "examples": [52.52, 48.14, 51.34]
+            },
+            "longitude": {
+              "type": "number",
+              "description": "Geografische Länge des Standorts in Dezimalgrad. Erforderlich für PVGIS-basierte Produktionsberechnung.",
+              "minimum": -180,
+              "maximum": 180,
+              "examples": [13.405, 11.58, 12.37]
+            },
+            "system_loss": {
+              "type": "number",
+              "description": "Systemverluste in Prozent (%). Beinhaltet Kabel-, Wechselrichter- und sonstige Verluste.",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 14,
+              "examples": [10, 14, 18]
+            },
+            "tilt_angle": {
+              "type": "number",
+              "description": "Neigungswinkel der Module in Grad. Bei null wird der optimale Winkel von PVGIS berechnet.",
+              "minimum": 0,
+              "maximum": 90,
+              "examples": [30, 35, 40]
+            },
+            "azimuth": {
+              "type": "number",
+              "description": "Ausrichtung der Module in Grad. 0 = Süden, 90 = Westen, -90 = Osten, 180 = Norden.",
+              "minimum": -180,
+              "maximum": 180,
+              "default": 0,
+              "examples": [0, -10, 10]
+            },
+            "degradation_rate": {
+              "type": "number",
+              "description": "Jährliche Degradationsrate der Anlage als Dezimalzahl. 0.005 = 0,5% pro Jahr.",
+              "minimum": 0,
+              "maximum": 0.1,
+              "default": 0.005,
+              "examples": [0.003, 0.005, 0.007]
+            },
+            "availability": {
+              "type": "number",
+              "description": "Technische Verfügbarkeit der Anlage als Dezimalzahl. 0.97 = 97% Verfügbarkeit.",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.97,
+              "examples": [0.95, 0.97, 0.99]
+            },
+            "lifetime_years": {
+              "type": "integer",
+              "description": "Projektlaufzeit für das Volumenmodell (überschreibt project.lifetime_years falls abweichend).",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            },
+            "irradiance_profile": {
+              "type": "string",
+              "description": "Referenz auf ein Einstrahlungsprofil (für manuelle Produktionseingabe ohne PVGIS).",
+              "examples": ["typical_year_germany", "custom_profile_2025"]
+            },
+            "module_efficiency": {
+              "type": "number",
+              "description": "Modulwirkungsgrad als Dezimalzahl (nur bei manueller Berechnung, nicht bei PVGIS).",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.18, 0.20, 0.22]
+            }
+          }
+        }
+      }
+    },
+    "financial": {
+      "type": "object",
+      "description": "Alle finanziellen Parameter für die Investitionsrechnung.",
+      "required": ["capex", "opex", "revenue", "financing", "discount", "inflation"],
+      "additionalProperties": false,
+      "properties": {
+        "capex": {
+          "type": "object",
+          "description": "Kapitalausgaben (Capital Expenditure) in allen Projektphasen.",
+          "additionalProperties": false,
+          "properties": {
+            "development": {
+              "type": "array",
+              "description": "Entwicklungskosten vor Baubeginn (Planung, Genehmigungen, Engineering).",
+              "items": {
+                "$ref": "#/$defs/capexItem"
+              },
+              "default": []
+            },
+            "construction": {
+              "type": "array",
+              "description": "Baukosten während der Errichtung (Module, Wechselrichter, Installation, Netzanschluss).",
+              "items": {
+                "$ref": "#/$defs/capexItem"
+              },
+              "default": []
+            },
+            "replacement": {
+              "type": "array",
+              "description": "Ersatzinvestitionen während der Betriebsphase (z.B. Wechselrichtertausch nach 10-15 Jahren).",
+              "items": {
+                "$ref": "#/$defs/capexItem"
+              },
+              "default": []
+            },
+            "decommissioning": {
+              "type": "object",
+              "description": "Rückbaukosten am Ende der Projektlaufzeit.",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Aktiviert die Berücksichtigung von Rückbaukosten.",
+                  "default": false
+                },
+                "year": {
+                  "type": "integer",
+                  "description": "Jahr der Rückbaukosten (typischerweise = lifetime_years).",
+                  "minimum": 0
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "Gesamtbetrag der Rückbaukosten in Euro (€).",
+                  "minimum": 0
+                },
+                "reserve_annual": {
+                  "type": "boolean",
+                  "description": "Falls true: jährliche Rückstellung statt einmaliger Zahlung. Rückbaukosten werden gleichmäßig auf alle Betriebsjahre verteilt.",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        "opex": {
+          "type": "object",
+          "description": "Betriebskosten (Operational Expenditure) während der Betriebsphase.",
+          "additionalProperties": false,
+          "properties": {
+            "fixed": {
+              "type": "array",
+              "description": "Fixe Betriebskosten, die unabhängig von der Produktion anfallen.",
+              "items": {
+                "$ref": "#/$defs/opexFixedItem"
+              },
+              "default": []
+            },
+            "variable": {
+              "type": "array",
+              "description": "Variable Betriebskosten, die von der Produktion abhängen (z.B. Brennstoff bei KWK).",
+              "items": {
+                "$ref": "#/$defs/opexVariableItem"
+              },
+              "default": []
+            }
+          }
+        },
+        "revenue": {
+          "type": "object",
+          "description": "Einnahmenströme aus dem Anlagenbetrieb.",
+          "additionalProperties": false,
+          "properties": {
+            "streams": {
+              "type": "array",
+              "description": "Liste der Einnahmenströme. Ein Projekt kann mehrere Streams haben (z.B. EEG-Vergütung + Direktvermarktung).",
+              "items": {
+                "$ref": "#/$defs/revenueStream"
+              },
+              "minItems": 1
+            }
+          },
+          "required": ["streams"]
+        },
+        "financing": {
+          "type": "object",
+          "description": "Finanzierungsstruktur des Projekts (Eigen- und Fremdkapital).",
+          "additionalProperties": false,
+          "properties": {
+            "equity_share": {
+              "type": "number",
+              "description": "Eigenkapitalanteil als Dezimalzahl. 0.25 = 25% Eigenkapital, 75% Fremdkapital.",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 1,
+              "examples": [0.20, 0.25, 0.30, 1.0]
+            },
+            "debt": {
+              "type": "object",
+              "description": "Fremdkapitalstruktur. Nur relevant wenn equity_share < 1.",
+              "additionalProperties": false,
+              "properties": {
+                "principal": {
+                  "type": "number",
+                  "description": "Darlehensbetrag in Euro (€). Sollte zu equity_share passen.",
+                  "minimum": 0,
+                  "examples": [600000, 750000, 1000000]
+                },
+                "interest_rate": {
+                  "type": "number",
+                  "description": "Jährlicher Zinssatz als Dezimalzahl. 0.045 = 4,5% p.a.",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "examples": [0.035, 0.045, 0.055]
+                },
+                "term_years": {
+                  "type": "integer",
+                  "description": "Laufzeit des Darlehens in Jahren.",
+                  "minimum": 1,
+                  "maximum": 40,
+                  "examples": [10, 15, 20]
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Darlehenstyp. Derzeit wird nur Annuitätendarlehen unterstützt.",
+                  "enum": ["annuity"],
+                  "default": "annuity"
+                }
+              },
+              "required": ["principal", "interest_rate", "term_years"]
+            }
+          }
+        },
+        "tax": {
+          "type": "object",
+          "description": "Steuerparameter für die Ertragsteuerberechnung.",
+          "additionalProperties": false,
+          "properties": {
+            "corporate_tax_rate": {
+              "type": "number",
+              "description": "Effektiver Körperschaftsteuersatz als Dezimalzahl. Deutschland: ca. 0.30 (30% inkl. Gewerbesteuer und Solidaritätszuschlag). Überschreibt den Standardwert aus dem Asset-Template.",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.25, 0.30, 0.35]
+            },
+            "depreciation_method": {
+              "type": "string",
+              "description": "Abschreibungsmethode. Derzeit wird nur lineare Abschreibung unterstützt.",
+              "enum": ["linear"],
+              "default": "linear"
+            },
+            "depreciation_years": {
+              "type": "integer",
+              "description": "Abschreibungsdauer in Jahren. Überschreibt den Standardwert aus dem Asset-Template (PV: 20, Wind: 20, Wärmenetz: 40, KWK: 15).",
+              "minimum": 1,
+              "maximum": 50,
+              "examples": [15, 20, 40]
+            }
+          }
+        },
+        "discount": {
+          "type": "object",
+          "description": "Diskontierungsparameter für die DCF-Berechnung.",
+          "additionalProperties": false,
+          "properties": {
+            "wacc": {
+              "type": "number",
+              "description": "Weighted Average Cost of Capital (gewichtete Kapitalkosten) als Dezimalzahl. Wird für NPV-Berechnung und LCOE verwendet.",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.04, 0.055, 0.07]
+            },
+            "cost_of_equity": {
+              "type": "number",
+              "description": "Eigenkapitalkosten als Dezimalzahl. Wird für Equity-NPV und Equity-IRR verwendet.",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.06, 0.08, 0.10]
+            },
+            "cost_of_debt": {
+              "type": "number",
+              "description": "Fremdkapitalkosten vor Steuern als Dezimalzahl. Kann zur WACC-Berechnung verwendet werden.",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.035, 0.045, 0.055]
+            },
+            "tax_rate": {
+              "type": "number",
+              "description": "Steuersatz für Tax Shield in WACC-Berechnung als Dezimalzahl.",
+              "minimum": 0,
+              "maximum": 1,
+              "examples": [0.25, 0.30]
+            }
+          }
+        },
+        "inflation": {
+          "type": "object",
+          "description": "Inflationsannahmen für Kostenindexierung.",
+          "additionalProperties": false,
+          "required": ["base_rate"],
+          "properties": {
+            "base_rate": {
+              "type": "number",
+              "description": "Basisinflationsrate als Dezimalzahl. Wird angewendet wenn indexed=true und keine spezifische escalation_rate angegeben ist.",
+              "minimum": -0.1,
+              "maximum": 0.5,
+              "examples": [0.015, 0.02, 0.025]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "capexItem": {
+      "type": "object",
+      "description": "Einzelne Kapitalausgabenposition.",
+      "required": ["phase", "year", "month", "amount", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "phase": {
+          "type": "string",
+          "description": "Projektphase der Ausgabe.",
+          "enum": ["development", "construction", "replacement"]
+        },
+        "year": {
+          "type": "integer",
+          "description": "Jahr der Ausgabe (0-basiert). Jahr -1 für Entwicklungskosten vor Baubeginn (wird auf Jahr 0 gemappt).",
+          "minimum": -5
+        },
+        "month": {
+          "type": "integer",
+          "description": "Monat der Ausgabe innerhalb des Jahres (0-11).",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "amount": {
+          "type": "number",
+          "description": "Betrag in Euro (€).",
+          "minimum": 0
+        },
+        "category": {
+          "type": "string",
+          "description": "Kategorie der Ausgabe zur Dokumentation und Analyse.",
+          "examples": [
+            "permits_engineering",
+            "modules",
+            "inverters",
+            "installation",
+            "grid_connection",
+            "transformer",
+            "cabling",
+            "foundations"
+          ]
+        }
+      }
+    },
+    "opexFixedItem": {
+      "type": "object",
+      "description": "Fixe Betriebskostenposition (jährlich).",
+      "required": ["category", "annual_amount"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Kategorie der Betriebskosten.",
+          "examples": [
+            "maintenance",
+            "insurance",
+            "land_lease",
+            "management",
+            "monitoring",
+            "grid_fees"
+          ]
+        },
+        "annual_amount": {
+          "type": "number",
+          "description": "Jährlicher Betrag in Euro (€) im ersten Betriebsjahr.",
+          "minimum": 0
+        },
+        "indexed": {
+          "type": "boolean",
+          "description": "Falls true: jährliche Steigerung mit escalation_rate oder Basisinflation.",
+          "default": false
+        },
+        "escalation_rate": {
+          "type": ["number", "null"],
+          "description": "Spezifische jährliche Steigerungsrate als Dezimalzahl. Falls null oder nicht angegeben: Verwendung der Basisinflation.",
+          "minimum": -0.1,
+          "maximum": 0.5,
+          "examples": [0.02, 0.025, null]
+        }
+      }
+    },
+    "opexVariableItem": {
+      "type": "object",
+      "description": "Variable Betriebskostenposition (produktionsabhängig).",
+      "required": ["category", "unit_cost"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Kategorie der variablen Kosten.",
+          "examples": [
+            "fuel",
+            "electricity_purchase",
+            "consumables",
+            "water"
+          ]
+        },
+        "unit_cost": {
+          "type": "number",
+          "description": "Stückkosten pro Einheit (€/kWh, €/MWh, €/m³, etc.).",
+          "minimum": 0
+        },
+        "indexed": {
+          "type": "boolean",
+          "description": "Falls true: jährliche Steigerung der Stückkosten.",
+          "default": false
+        },
+        "escalation_rate": {
+          "type": ["number", "null"],
+          "description": "Spezifische jährliche Steigerungsrate als Dezimalzahl.",
+          "minimum": -0.1,
+          "maximum": 0.5
+        }
+      }
+    },
+    "revenueStream": {
+      "type": "object",
+      "description": "Einnahmenstrom aus dem Anlagenbetrieb.",
+      "required": ["name", "type", "price_structure"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Bezeichnung des Einnahmenstroms.",
+          "examples": [
+            "eeg_tariff",
+            "merchant_sales",
+            "ppa",
+            "heat_sales",
+            "capacity_payment"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "description": "Art des Einnahmenstroms.",
+          "enum": ["fixed_price", "market_based", "regulated"],
+          "enumDescriptions": {
+            "fixed_price": "Fester Preis (z.B. EEG-Vergütung, PPA)",
+            "market_based": "Marktpreisbasiert (Spot/Future)",
+            "regulated": "Regulierter Tarif (z.B. Wärmepreis)"
+          }
+        },
+        "price_structure": {
+          "type": "object",
+          "description": "Preisstruktur mit fixen und/oder marktbasierten Perioden.",
+          "additionalProperties": false,
+          "properties": {
+            "fixed_period": {
+              "type": "object",
+              "description": "Periode mit festem Preis (z.B. 20 Jahre EEG-Vergütung).",
+              "additionalProperties": false,
+              "properties": {
+                "start_year": {
+                  "type": "integer",
+                  "description": "Startjahr der festen Vergütung (0-basiert).",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "end_year": {
+                  "type": "integer",
+                  "description": "Endjahr der festen Vergütung (inklusiv, 0-basiert). 19 = Jahr 20 der Projektlaufzeit.",
+                  "minimum": 0
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Fester Preis in €/kWh.",
+                  "minimum": 0,
+                  "examples": [0.073, 0.085, 0.065]
+                },
+                "indexed": {
+                  "type": "boolean",
+                  "description": "Falls true: jährliche Preisanpassung mit escalation_rate.",
+                  "default": false
+                },
+                "escalation_rate": {
+                  "type": ["number", "null"],
+                  "description": "Jährliche Preissteigerung als Dezimalzahl. Bei EEG typischerweise 0 (keine Indexierung).",
+                  "minimum": -0.1,
+                  "maximum": 0.5,
+                  "default": 0
+                }
+              },
+              "required": ["price"]
+            },
+            "market_period": {
+              "type": "object",
+              "description": "Periode mit marktbasierter Preisbildung (Post-EEG, Merchant Tail).",
+              "additionalProperties": false,
+              "properties": {
+                "start_year": {
+                  "type": "integer",
+                  "description": "Startjahr der Marktperiode (0-basiert). Typisch: Jahr nach Ende der EEG-Vergütung.",
+                  "minimum": 0
+                },
+                "end_year": {
+                  "type": "integer",
+                  "description": "Endjahr der Marktperiode (inklusiv, 0-basiert). Typisch: lifetime_years - 1.",
+                  "minimum": 0
+                },
+                "price_curve": {
+                  "type": "string",
+                  "description": "Preisszenario für die Marktperiode. Verknüpft mit PriceCurveInterface.",
+                  "enum": ["high", "mid", "low"],
+                  "default": "mid"
+                }
+              },
+              "required": ["start_year", "end_year"]
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "project": {
+        "name": "Solarpark Musterstadt 1 MWp",
+        "asset_type": "pv",
+        "lifetime_years": 25,
+        "start_date": "2026-07-01"
+      },
+      "technical": {
+        "capacity": 1000,
+        "volume_model_params": {
+          "latitude": 52.52,
+          "longitude": 13.405,
+          "system_loss": 14,
+          "degradation_rate": 0.005,
+          "availability": 0.97
+        }
+      },
+      "financial": {
+        "capex": {
+          "development": [
+            {"phase": "development", "year": 0, "month": 0, "amount": 30000, "category": "permits_engineering"}
+          ],
+          "construction": [
+            {"phase": "construction", "year": 0, "month": 0, "amount": 400000, "category": "modules"},
+            {"phase": "construction", "year": 0, "month": 0, "amount": 150000, "category": "inverters"},
+            {"phase": "construction", "year": 0, "month": 0, "amount": 200000, "category": "installation"},
+            {"phase": "construction", "year": 0, "month": 0, "amount": 50000, "category": "grid_connection"}
+          ],
+          "replacement": [
+            {"phase": "replacement", "year": 10, "month": 0, "amount": 80000, "category": "inverters"},
+            {"phase": "replacement", "year": 20, "month": 0, "amount": 80000, "category": "inverters"}
+          ],
+          "decommissioning": {
+            "enabled": true,
+            "year": 25,
+            "amount": 50000,
+            "reserve_annual": true
+          }
+        },
+        "opex": {
+          "fixed": [
+            {"category": "maintenance", "annual_amount": 12000, "indexed": true, "escalation_rate": 0.02},
+            {"category": "insurance", "annual_amount": 3000, "indexed": true, "escalation_rate": 0.02},
+            {"category": "land_lease", "annual_amount": 5000, "indexed": true, "escalation_rate": 0.02}
+          ],
+          "variable": []
+        },
+        "revenue": {
+          "streams": [
+            {
+              "name": "eeg_tariff",
+              "type": "fixed_price",
+              "price_structure": {
+                "fixed_period": {
+                  "start_year": 0,
+                  "end_year": 19,
+                  "price": 0.073,
+                  "indexed": false
+                },
+                "market_period": {
+                  "start_year": 20,
+                  "end_year": 24,
+                  "price_curve": "mid"
+                }
+              }
+            }
+          ]
+        },
+        "financing": {
+          "equity_share": 0.25,
+          "debt": {
+            "principal": 622500,
+            "interest_rate": 0.045,
+            "term_years": 15,
+            "type": "annuity"
+          }
+        },
+        "tax": {
+          "corporate_tax_rate": 0.30,
+          "depreciation_method": "linear",
+          "depreciation_years": 20
+        },
+        "discount": {
+          "wacc": 0.055,
+          "cost_of_equity": 0.08
+        },
+        "inflation": {
+          "base_rate": 0.02
+        }
+      }
+    }
+  ]
+}
