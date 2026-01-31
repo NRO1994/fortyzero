@@ -515,6 +515,77 @@ class TestPVIntegrationComplete:
     # Helper Test to Generate Expected Values
     # =========================================================================
 
+    def test_csv_inflation(
+        self,
+        pv_params: dict[str, Any],
+        pv_monthly_volumes: np.ndarray,
+        tmp_path,
+    ) -> None:
+        """
+        Test PV project with time-varying inflation from CSV.
+
+        This test validates that CSV-based inflation rates work correctly
+        and produce different results than constant inflation.
+
+        Note: The original pv_params fixture has explicit escalation_rate=0.02
+        for each OPEX item, which overrides inflation. This test modifies
+        the OPEX items to not have escalation_rate so they use inflation.
+        """
+        import copy
+
+        # Create CSV with increasing inflation rates
+        csv_path = tmp_path / "inflation.csv"
+        inflation_data = ["year,rate"]
+        for year in range(25):
+            # Inflation increases from 2% to 4% over 25 years
+            rate = 0.02 + (0.02 * year / 24)
+            inflation_data.append(f"{year},{rate:.4f}")
+        csv_path.write_text("\n".join(inflation_data))
+
+        # Create params without explicit escalation_rate (uses inflation)
+        params_no_escalation = copy.deepcopy(pv_params)
+        for opex_item in params_no_escalation["financial"]["opex"]["fixed"]:
+            opex_item.pop("escalation_rate", None)  # Remove explicit rate
+
+        # Test with CSV inflation
+        params_csv = copy.deepcopy(params_no_escalation)
+        params_csv["financial"]["inflation"] = {"csv_path": str(csv_path)}
+
+        # Test with constant inflation
+        params_const = copy.deepcopy(params_no_escalation)
+        params_const["financial"]["inflation"] = {"base_rate": 0.02}
+
+        model = FinancialModel(asset_type="pv")
+
+        # Calculate with CSV inflation
+        results_csv = model.calculate(params_csv, pv_monthly_volumes)
+
+        # Calculate with constant inflation
+        results_const = model.calculate(params_const, pv_monthly_volumes)
+
+        # Verify calculation completed successfully
+        assert results_csv["kpis"]["npv_project"] is not None
+        assert results_csv["kpis"]["lcoe"] > 0
+
+        # CSV inflation (increasing) should produce different OPEX
+        # Higher average inflation = higher OPEX over time = lower NPV
+        opex_csv = np.sum(results_csv["cash_flows"]["annual"]["opex_fixed"])
+        opex_const = np.sum(results_const["cash_flows"]["annual"]["opex_fixed"])
+
+        # With increasing inflation (avg ~3%), OPEX should be higher
+        assert opex_csv > opex_const, (
+            f"CSV inflation (increasing to 4%) should produce higher OPEX: "
+            f"{opex_csv:.0f} vs {opex_const:.0f}"
+        )
+
+        print(f"\n{'='*60}")
+        print("CSV Inflation Test Results")
+        print(f"{'='*60}")
+        print(f"  Constant 2% inflation OPEX total: {opex_const:,.0f} €")
+        print(f"  CSV inflation (2%→4%) OPEX total: {opex_csv:,.0f} €")
+        print(f"  Difference: {opex_csv - opex_const:,.0f} € ({(opex_csv/opex_const - 1)*100:.1f}%)")
+        print(f"{'='*60}")
+
     @pytest.mark.skip(reason="Run manually to generate expected values")
     def test_generate_expected_values(
         self,

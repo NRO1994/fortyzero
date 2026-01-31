@@ -368,18 +368,36 @@
         },
         "inflation": {
           "type": "object",
-          "description": "Inflationsannahmen für Kostenindexierung.",
+          "description": "Inflationsannahmen für Kostenindexierung. Entweder als konstante Rate (base_rate) oder als CSV-Datei mit jahresabhängigen Raten.",
           "additionalProperties": false,
-          "required": ["base_rate"],
-          "properties": {
-            "base_rate": {
-              "type": "number",
-              "description": "Basisinflationsrate als Dezimalzahl. Wird angewendet wenn indexed=true und keine spezifische escalation_rate angegeben ist.",
-              "minimum": -0.1,
-              "maximum": 0.5,
-              "examples": [0.015, 0.02, 0.025]
+          "oneOf": [
+            {
+              "required": ["base_rate"],
+              "properties": {
+                "base_rate": {
+                  "type": "number",
+                  "description": "Konstante Basisinflationsrate als Dezimalzahl. Wird für alle Projektjahre verwendet.",
+                  "minimum": -0.1,
+                  "maximum": 0.5,
+                  "examples": [0.015, 0.02, 0.025]
+                }
+              }
+            },
+            {
+              "required": ["csv_path"],
+              "properties": {
+                "csv_path": {
+                  "type": "string",
+                  "description": "Pfad zur CSV-Datei mit jährlichen Inflationsraten. CSV muss Spalten 'year' und 'rate' (oder 'inflation_rate') enthalten."
+                },
+                "rate_column": {
+                  "type": "string",
+                  "description": "Spaltenname für die Inflationsrate in der CSV-Datei.",
+                  "default": "rate"
+                }
+              }
             }
-          }
+          ]
         }
       }
     }

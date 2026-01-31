@@ -12,6 +12,7 @@ from financial_model.models.revenue_model import RevenueModel
 from financial_model.models.cost_model import CostModel
 from financial_model.models.tax_model import TaxModel
 from financial_model.models.financing_model import FinancingModel
+from financial_model.models.inflation_curve import InflationCurve
 from financial_model.templates.asset_templates import ASSET_TEMPLATES
 
 
@@ -120,11 +121,15 @@ class FinancialModel:
         tax_params = self._apply_template_defaults(financial.get("tax", {}))
         discount_params = financial.get("discount", {})
 
+        # Load inflation rates (supports both constant and CSV-based)
+        inflation_curve = InflationCurve(financial["inflation"], n_years)
+        inflation_rates = inflation_curve.get_rates()
+
         # Calculate hourly revenues
         hourly_revenue = self.revenue_model.calculate_hourly(
             hourly_volumes=hourly_volumes,
             revenue_config=financial["revenue"],
-            inflation_rate=financial["inflation"]["base_rate"],
+            inflation_rates=inflation_rates,
             price_curve=self.price_curve,
             n_years=n_years,
         )
@@ -137,7 +142,7 @@ class FinancialModel:
         cost_results = self.cost_model.calculate(
             capex_config=financial["capex"],
             opex_config=financial["opex"],
-            inflation_rate=financial["inflation"]["base_rate"],
+            inflation_rates=inflation_rates,
             n_years=n_years,
             n_months=n_months,
         )
@@ -283,11 +288,15 @@ class FinancialModel:
         tax_params = self._apply_template_defaults(financial.get("tax", {}))
         discount_params = financial.get("discount", {})
 
+        # Load inflation rates (supports both constant and CSV-based)
+        inflation_curve = InflationCurve(financial["inflation"], n_years)
+        inflation_rates = inflation_curve.get_rates()
+
         # Calculate revenues (monthly)
         monthly_revenue = self.revenue_model.calculate(
             volumes=monthly_volumes,
             revenue_config=financial["revenue"],
-            inflation_rate=financial["inflation"]["base_rate"],
+            inflation_rates=inflation_rates,
             price_curve=self.price_curve,
             n_months=n_months,
         )
@@ -296,7 +305,7 @@ class FinancialModel:
         cost_results = self.cost_model.calculate(
             capex_config=financial["capex"],
             opex_config=financial["opex"],
-            inflation_rate=financial["inflation"]["base_rate"],
+            inflation_rates=inflation_rates,
             n_years=n_years,
             n_months=n_months,
         )

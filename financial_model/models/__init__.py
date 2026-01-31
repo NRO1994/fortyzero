@@ -6,6 +6,7 @@ from financial_model.models.tax_model import TaxModel
 from financial_model.models.financing_model import FinancingModel
 from financial_model.models.pv_volume_model import PVVolumeModel
 from financial_model.models.csv_price_curve import CSVPriceCurve
+from financial_model.models.inflation_curve import InflationCurve
 
 __all__ = [
     "RevenueModel",
@@ -14,4 +15,5 @@ __all__ = [
     "FinancingModel",
     "PVVolumeModel",
     "CSVPriceCurve",
+    "InflationCurve",
 ]
