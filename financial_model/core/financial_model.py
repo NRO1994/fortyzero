@@ -13,6 +13,7 @@ from financial_model.models.cost_model import CostModel
 from financial_model.models.tax_model import TaxModel
 from financial_model.models.financing_model import FinancingModel
 from financial_model.models.inflation_curve import InflationCurve
+from financial_model.models.curtailment_model import CurtailmentModel
 from financial_model.templates.asset_templates import ASSET_TEMPLATES
 
 
@@ -67,6 +68,7 @@ class FinancialModel:
         self.cost_model = CostModel()
         self.tax_model = TaxModel()
         self.financing_model = FinancingModel()
+        self.curtailment_model = CurtailmentModel()
         self.dcf_engine = DCFEngine()
         self.kpi_calculator = KPICalculator()
 
@@ -115,6 +117,34 @@ class FinancialModel:
             raise ValueError(
                 f"Expected {n_hours} hourly volumes ({n_years} years × 8760), "
                 f"got {len(hourly_volumes)}"
+            )
+
+        # Apply curtailment if configured
+        curtailment_stats = None
+        original_hourly_volumes = None
+        curtailment_params = params.get("technical", {}).get("curtailment_params")
+
+        if curtailment_params is not None:
+            original_hourly_volumes = hourly_volumes.copy()
+
+            # For price-based curtailment, we need hourly prices
+            # Get them from price curve if available
+            hourly_prices_for_curtailment = None
+            if curtailment_params.get("mode") == "price_based" and self.price_curve is not None:
+                hourly_prices_for_curtailment = self.price_curve.get_hourly_prices(0, n_years - 1)
+                hourly_prices_for_curtailment = hourly_prices_for_curtailment / 1000.0  # €/MWh → €/kWh
+
+            hourly_volumes = self.curtailment_model.apply(
+                volumes=hourly_volumes,
+                params=curtailment_params,
+                n_years=n_years,
+                hourly_prices=hourly_prices_for_curtailment,
+                capacity_kw=params.get("technical", {}).get("capacity"),
+            )
+
+            # Calculate curtailment statistics
+            curtailment_stats = self.curtailment_model.get_annual_curtailment_summary(
+                original_hourly_volumes, hourly_volumes, n_years
             )
 
         # Apply template defaults
@@ -208,7 +238,8 @@ class FinancialModel:
         monthly_revenue = RevenueModel.aggregate_hourly_to_monthly(hourly_revenue)
         monthly_volumes = self._aggregate_hourly_to_monthly(hourly_volumes)
 
-        return {
+        # Build result dictionary
+        result = {
             "kpis": kpis,
             "cash_flows": {
                 "annual": {
@@ -238,6 +269,35 @@ class FinancialModel:
                 "dscr": kpis["dscr_series"],
             },
         }
+
+        # Add curtailment statistics if curtailment was applied
+        if curtailment_stats is not None:
+            result["curtailment"] = {
+                "enabled": True,
+                "mode": curtailment_params.get("mode", "annual_rates"),
+                "annual_curtailed_mwh": curtailment_stats["annual_curtailed_mwh"],
+                "annual_curtailment_rates": curtailment_stats["annual_curtailment_rates"],
+                "total_curtailment_rate": curtailment_stats["total_curtailment_rate"],
+                "total_curtailed_mwh": float(
+                    np.sum(curtailment_stats["annual_curtailed_mwh"])
+                ),
+            }
+
+            # Calculate compensation if enabled and prices available
+            compensation_params = curtailment_params.get("compensation", {})
+            if compensation_params.get("enabled", False) and self.price_curve is not None:
+                hourly_prices = self.price_curve.get_hourly_prices(0, n_years - 1)
+                hourly_prices = hourly_prices / 1000.0  # €/MWh → €/kWh
+                compensation = self.curtailment_model.calculate_compensation(
+                    original_volumes=original_hourly_volumes,
+                    curtailed_volumes=hourly_volumes,
+                    hourly_prices=hourly_prices,
+                    compensation_rate=compensation_params.get("rate", 0.95),
+                    n_years=n_years,
+                )
+                result["curtailment"]["compensation"] = compensation
+
+        return result
 
     def calculate(
         self,
@@ -283,6 +343,27 @@ class FinancialModel:
                 monthly_volumes = self._aggregate_hourly_to_monthly(hourly_volumes)
             else:
                 monthly_volumes = hourly_volumes  # Assume already monthly
+
+        # Apply curtailment if configured (monthly granularity)
+        curtailment_stats = None
+        original_monthly_volumes = None
+        curtailment_params = params.get("technical", {}).get("curtailment_params")
+
+        if curtailment_params is not None:
+            original_monthly_volumes = monthly_volumes.copy()
+
+            monthly_volumes = self.curtailment_model.apply(
+                volumes=monthly_volumes,
+                params=curtailment_params,
+                n_years=n_years,
+                hourly_prices=None,  # Monthly mode doesn't support price-based
+                capacity_kw=params.get("technical", {}).get("capacity"),
+            )
+
+            # Calculate curtailment statistics
+            curtailment_stats = self.curtailment_model.get_annual_curtailment_summary(
+                original_monthly_volumes, monthly_volumes, n_years
+            )
 
         # Apply template defaults where not overridden
         tax_params = self._apply_template_defaults(financial.get("tax", {}))
@@ -369,7 +450,8 @@ class FinancialModel:
             n_years=n_years,
         )
 
-        return {
+        # Build result dictionary
+        result = {
             "kpis": kpis,
             "cash_flows": {
                 "annual": {
@@ -395,6 +477,21 @@ class FinancialModel:
                 "dscr": kpis["dscr_series"],
             },
         }
+
+        # Add curtailment statistics if curtailment was applied
+        if curtailment_stats is not None:
+            result["curtailment"] = {
+                "enabled": True,
+                "mode": curtailment_params.get("mode", "annual_rates"),
+                "annual_curtailed_mwh": curtailment_stats["annual_curtailed_mwh"],
+                "annual_curtailment_rates": curtailment_stats["annual_curtailment_rates"],
+                "total_curtailment_rate": curtailment_stats["total_curtailment_rate"],
+                "total_curtailed_mwh": float(
+                    np.sum(curtailment_stats["annual_curtailed_mwh"])
+                ),
+            }
+
+        return result
 
     def _apply_template_defaults(self, tax_params: dict[str, Any]) -> dict[str, Any]:
         """Apply asset template defaults for missing tax parameters."""

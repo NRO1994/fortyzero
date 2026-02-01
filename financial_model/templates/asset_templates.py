@@ -9,6 +9,11 @@ ASSET_TEMPLATES: dict[str, dict[str, Any]] = {
         "default_lifetime_years": 25,
         "typical_wacc": 0.04,
         "decommissioning_cost_per_kw": 50,  # €/kW
+        "curtailment_defaults": {
+            "mode": "annual_rates",
+            "rates": 0.02,  # 2% typical for PV in Germany
+            "typical_range": (0.01, 0.05),
+        },
     },
     "wind": {
         "depreciation_years": 20,
@@ -16,6 +21,11 @@ ASSET_TEMPLATES: dict[str, dict[str, Any]] = {
         "default_lifetime_years": 25,
         "typical_wacc": 0.05,
         "decommissioning_cost_per_kw": 100,  # €/kW
+        "curtailment_defaults": {
+            "mode": "annual_rates",
+            "rates": 0.03,  # 3% typical for wind in Germany (coastal areas higher)
+            "typical_range": (0.02, 0.08),
+        },
     },
     "heat_network": {
         "depreciation_years": 40,
@@ -23,6 +33,7 @@ ASSET_TEMPLATES: dict[str, dict[str, Any]] = {
         "default_lifetime_years": 40,
         "typical_wacc": 0.06,
         "decommissioning_cost_per_kw": 20,  # €/kW
+        "curtailment_defaults": None,  # No curtailment for heat networks
     },
     "chp": {
         "depreciation_years": 15,
@@ -30,5 +41,10 @@ ASSET_TEMPLATES: dict[str, dict[str, Any]] = {
         "default_lifetime_years": 20,
         "typical_wacc": 0.06,
         "decommissioning_cost_per_kw": 75,  # €/kW
+        "curtailment_defaults": {
+            "mode": "annual_rates",
+            "rates": 0.01,  # 1% typical for CHP (more stable operation)
+            "typical_range": (0.005, 0.03),
+        },
     },
 }

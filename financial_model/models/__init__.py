@@ -7,6 +7,7 @@ from financial_model.models.financing_model import FinancingModel
 from financial_model.models.pv_volume_model import PVVolumeModel
 from financial_model.models.csv_price_curve import CSVPriceCurve
 from financial_model.models.inflation_curve import InflationCurve
+from financial_model.models.curtailment_model import CurtailmentModel
 
 __all__ = [
     "RevenueModel",
@@ -16,4 +17,5 @@ __all__ = [
     "PVVolumeModel",
     "CSVPriceCurve",
     "InflationCurve",
+    "CurtailmentModel",
 ]
