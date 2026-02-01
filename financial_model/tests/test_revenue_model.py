@@ -23,6 +23,7 @@ class TestRevenueModel:
         self, revenue_model: RevenueModel, simple_volumes: np.ndarray
     ) -> None:
         """Test revenue calculation with fixed price."""
+        n_years = 2
         config = {
             "streams": [
                 {
@@ -43,7 +44,7 @@ class TestRevenueModel:
         revenue = revenue_model.calculate(
             volumes=simple_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=None,
             n_months=24,
         )
@@ -56,6 +57,7 @@ class TestRevenueModel:
         self, revenue_model: RevenueModel, simple_volumes: np.ndarray
     ) -> None:
         """Test revenue with price escalation."""
+        n_years = 2
         config = {
             "streams": [
                 {
@@ -77,7 +79,7 @@ class TestRevenueModel:
         revenue = revenue_model.calculate(
             volumes=simple_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=None,
             n_months=24,
         )
@@ -91,12 +93,13 @@ class TestRevenueModel:
         self, revenue_model: RevenueModel, simple_volumes: np.ndarray
     ) -> None:
         """Test with no revenue streams returns zeros."""
+        n_years = 2
         config = {"streams": []}
 
         revenue = revenue_model.calculate(
             volumes=simple_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=None,
             n_months=24,
         )

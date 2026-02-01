@@ -26,7 +26,7 @@ class RevenueModel:
         self,
         hourly_volumes: np.ndarray,
         revenue_config: dict[str, Any],
-        inflation_rate: float,
+        inflation_rates: np.ndarray,
         price_curve: PriceCurveInterface | None,
         n_years: int,
     ) -> np.ndarray:
@@ -36,7 +36,7 @@ class RevenueModel:
         Args:
             hourly_volumes: Hourly production volumes (n_years × 8760 values).
             revenue_config: Revenue configuration with streams list.
-            inflation_rate: Base inflation rate for escalation.
+            inflation_rates: Year-indexed inflation rates array of shape (n_years,).
             price_curve: Price curve for market periods.
             n_years: Project lifetime in years.
 
@@ -56,7 +56,7 @@ class RevenueModel:
             stream_revenue = self._calculate_stream_hourly(
                 hourly_volumes=hourly_volumes,
                 stream=stream,
-                inflation_rate=inflation_rate,
+                inflation_rates=inflation_rates,
                 price_curve=price_curve,
                 n_years=n_years,
             )
@@ -68,7 +68,7 @@ class RevenueModel:
         self,
         hourly_volumes: np.ndarray,
         stream: dict[str, Any],
-        inflation_rate: float,
+        inflation_rates: np.ndarray,
         price_curve: PriceCurveInterface | None,
         n_years: int,
     ) -> np.ndarray:
@@ -78,7 +78,7 @@ class RevenueModel:
         Args:
             hourly_volumes: Hourly production volumes.
             stream: Stream configuration.
-            inflation_rate: Base inflation rate.
+            inflation_rates: Year-indexed inflation rates array.
             price_curve: Optional price curve interface.
             n_years: Project lifetime.
 
@@ -95,7 +95,11 @@ class RevenueModel:
         fixed_end = fixed_period.get("end_year", -1)
         fixed_price = fixed_period.get("price", 0.0)  # €/kWh
         fixed_indexed = fixed_period.get("indexed", False)
-        fixed_escalation = fixed_period.get("escalation_rate") or inflation_rate
+        custom_escalation = fixed_period.get("escalation_rate")
+
+        # Pre-calculate cumulative factors for time-varying inflation
+        cumulative_factors = np.cumprod(1 + inflation_rates)
+        cumulative_factors = np.insert(cumulative_factors[:-1], 0, 1.0)
 
         # Get market period parameters
         market_period = price_structure.get("market_period", {})
@@ -119,7 +123,12 @@ class RevenueModel:
             if fixed_start <= year <= fixed_end:
                 # Fixed price period
                 if fixed_indexed:
-                    price = fixed_price * (1 + fixed_escalation) ** year
+                    if custom_escalation is not None:
+                        # Use constant custom escalation rate
+                        price = fixed_price * (1 + custom_escalation) ** year
+                    else:
+                        # Use time-varying inflation via cumulative factors
+                        price = fixed_price * cumulative_factors[year]
                 else:
                     price = fixed_price
 
@@ -141,7 +150,7 @@ class RevenueModel:
         self,
         volumes: np.ndarray,
         revenue_config: dict[str, Any],
-        inflation_rate: float,
+        inflation_rates: np.ndarray,
         price_curve: PriceCurveInterface | None,
         n_months: int,
     ) -> np.ndarray:
@@ -153,7 +162,7 @@ class RevenueModel:
         Args:
             volumes: Monthly production volumes.
             revenue_config: Revenue configuration with streams list.
-            inflation_rate: Base inflation rate for escalation.
+            inflation_rates: Year-indexed inflation rates array.
             price_curve: Optional price curve for market periods.
             n_months: Total months in project lifetime.
 
@@ -166,7 +175,7 @@ class RevenueModel:
             stream_revenue = self._calculate_stream_revenue(
                 volumes=volumes,
                 stream=stream,
-                inflation_rate=inflation_rate,
+                inflation_rates=inflation_rates,
                 price_curve=price_curve,
                 n_months=n_months,
             )
@@ -178,7 +187,7 @@ class RevenueModel:
         self,
         volumes: np.ndarray,
         stream: dict[str, Any],
-        inflation_rate: float,
+        inflation_rates: np.ndarray,
         price_curve: PriceCurveInterface | None,
         n_months: int,
     ) -> np.ndarray:
@@ -188,7 +197,7 @@ class RevenueModel:
         Args:
             volumes: Monthly production volumes.
             stream: Stream configuration.
-            inflation_rate: Base inflation rate.
+            inflation_rates: Year-indexed inflation rates array.
             price_curve: Optional price curve interface.
             n_months: Total months.
 
@@ -198,6 +207,10 @@ class RevenueModel:
         revenue = np.zeros(n_months)
         price_structure = stream.get("price_structure", {})
 
+        # Pre-calculate cumulative factors for time-varying inflation
+        cumulative_factors = np.cumprod(1 + inflation_rates)
+        cumulative_factors = np.insert(cumulative_factors[:-1], 0, 1.0)
+
         for month in range(n_months):
             year = month // 12
 
@@ -205,7 +218,7 @@ class RevenueModel:
                 year=year,
                 month=month,
                 price_structure=price_structure,
-                inflation_rate=inflation_rate,
+                cumulative_factors=cumulative_factors,
                 price_curve=price_curve,
             )
 
@@ -219,7 +232,7 @@ class RevenueModel:
         year: int,
         month: int,
         price_structure: dict[str, Any],
-        inflation_rate: float,
+        cumulative_factors: np.ndarray,
         price_curve: PriceCurveInterface | None,
     ) -> float | None:
         """
@@ -229,7 +242,7 @@ class RevenueModel:
             year: Year index (0-based).
             month: Month index (0-based).
             price_structure: Price structure configuration.
-            inflation_rate: Base inflation rate.
+            cumulative_factors: Pre-calculated cumulative inflation factors.
             price_curve: Optional price curve interface.
 
         Returns:
@@ -245,8 +258,13 @@ class RevenueModel:
                 base_price = fixed_period["price"]
 
                 if fixed_period.get("indexed", False):
-                    escalation = fixed_period.get("escalation_rate") or inflation_rate
-                    return base_price * (1 + escalation) ** year
+                    custom_escalation = fixed_period.get("escalation_rate")
+                    if custom_escalation is not None:
+                        # Use constant custom escalation rate
+                        return base_price * (1 + custom_escalation) ** year
+                    else:
+                        # Use time-varying inflation via cumulative factors
+                        return base_price * cumulative_factors[year]
                 return base_price
 
         # Check market period

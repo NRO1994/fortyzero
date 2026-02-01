@@ -149,6 +149,119 @@
               "examples": [0.18, 0.20, 0.22]
             }
           }
+        },
+        "curtailment_params": {
+          "type": "object",
+          "description": "Konfiguration für Einspeisemanagement/Abregelung (§14/§51 EEG).",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "description": "Berechnungsmodus für Curtailment.",
+              "enum": ["annual_rates", "timeseries", "price_based", "capacity_limit", "stochastic"],
+              "enumDescriptions": {
+                "annual_rates": "Feste jährliche Abregelungsraten",
+                "timeseries": "Zeitreihen-basierte Profile aus CSV",
+                "price_based": "Preisabhängige Abregelung (z.B. bei negativen Preisen nach §51 EEG)",
+                "capacity_limit": "Kapazitätsbegrenzung (z.B. 70%-Regel)",
+                "stochastic": "Stochastische Modellierung für Monte Carlo"
+              }
+            },
+            "rates": {
+              "oneOf": [
+                {"type": "number", "minimum": 0, "maximum": 1},
+                {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}}
+              ],
+              "description": "Abregelungsrate(n) für annual_rates Modus. Einzelwert oder Array pro Jahr. 0.02 = 2% Abregelung.",
+              "examples": [0.02, 0.03, [0.01, 0.02, 0.03]]
+            },
+            "csv_path": {
+              "type": "string",
+              "description": "Pfad zur CSV-Datei mit Abregelungsprofil für timeseries Modus."
+            },
+            "price_threshold": {
+              "type": "number",
+              "description": "Preisschwelle für price_based Modus in €/kWh. Abregelung bei Unterschreitung.",
+              "default": 0,
+              "examples": [0, -0.01, -0.05]
+            },
+            "curtailment_factor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Abregelungsgrad bei Unterschreitung der Preisschwelle. 1.0 = vollständige Abschaltung.",
+              "default": 1.0
+            },
+            "consecutive_hours": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Erforderliche aufeinanderfolgende Stunden unter Preisschwelle für Abregelung (§51 EEG: 3 Stunden).",
+              "default": 3,
+              "examples": [3, 4, 6]
+            },
+            "limit_factor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Kapazitätslimit für capacity_limit Modus. 0.70 = max 70% der Nennleistung.",
+              "default": 0.70,
+              "examples": [0.60, 0.70, 0.80]
+            },
+            "base_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Basis-Abregelungsrate für stochastic Modus.",
+              "default": 0.02,
+              "examples": [0.01, 0.02, 0.03]
+            },
+            "volatility": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Standardabweichung der Abregelungsrate für stochastic Modus.",
+              "default": 0.01,
+              "examples": [0.005, 0.01, 0.02]
+            },
+            "trend": {
+              "type": "number",
+              "description": "Jährliche Zunahme der Abregelungsrate für stochastic Modus.",
+              "default": 0,
+              "examples": [0, 0.001, 0.002]
+            },
+            "production_correlation": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Korrelation zwischen Produktion und Abregelung. Höhere Produktion führt zu höherer Abregelungswahrscheinlichkeit.",
+              "default": 0,
+              "examples": [0, 0.3, 0.5]
+            },
+            "seed": {
+              "type": "integer",
+              "description": "Zufalls-Seed für Reproduzierbarkeit im stochastic Modus."
+            },
+            "compensation": {
+              "type": "object",
+              "description": "Entschädigungszahlungen nach §15 EEG.",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Aktiviert Berechnung von Entschädigungszahlungen.",
+                  "default": false
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Entschädigungssatz als Anteil des entgangenen Erlöses. 0.95 = 95% Entschädigung.",
+                  "default": 0.95,
+                  "examples": [0.90, 0.95, 1.0]
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -368,18 +481,36 @@
         },
         "inflation": {
           "type": "object",
-          "description": "Inflationsannahmen für Kostenindexierung.",
+          "description": "Inflationsannahmen für Kostenindexierung. Entweder als konstante Rate (base_rate) oder als CSV-Datei mit jahresabhängigen Raten.",
           "additionalProperties": false,
-          "required": ["base_rate"],
-          "properties": {
-            "base_rate": {
-              "type": "number",
-              "description": "Basisinflationsrate als Dezimalzahl. Wird angewendet wenn indexed=true und keine spezifische escalation_rate angegeben ist.",
-              "minimum": -0.1,
-              "maximum": 0.5,
-              "examples": [0.015, 0.02, 0.025]
+          "oneOf": [
+            {
+              "required": ["base_rate"],
+              "properties": {
+                "base_rate": {
+                  "type": "number",
+                  "description": "Konstante Basisinflationsrate als Dezimalzahl. Wird für alle Projektjahre verwendet.",
+                  "minimum": -0.1,
+                  "maximum": 0.5,
+                  "examples": [0.015, 0.02, 0.025]
+                }
+              }
+            },
+            {
+              "required": ["csv_path"],
+              "properties": {
+                "csv_path": {
+                  "type": "string",
+                  "description": "Pfad zur CSV-Datei mit jährlichen Inflationsraten. CSV muss Spalten 'year' und 'rate' (oder 'inflation_rate') enthalten."
+                },
+                "rate_column": {
+                  "type": "string",
+                  "description": "Spaltenname für die Inflationsrate in der CSV-Datei.",
+                  "default": "rate"
+                }
+              }
             }
-          }
+          ]
         }
       }
     }

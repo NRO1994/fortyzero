@@ -515,6 +515,203 @@ class TestPVIntegrationComplete:
     # Helper Test to Generate Expected Values
     # =========================================================================
 
+    def test_csv_inflation(
+        self,
+        pv_params: dict[str, Any],
+        pv_monthly_volumes: np.ndarray,
+        tmp_path,
+    ) -> None:
+        """
+        Test PV project with time-varying inflation from CSV.
+
+        This test validates that CSV-based inflation rates work correctly
+        and produce different results than constant inflation.
+
+        Note: The original pv_params fixture has explicit escalation_rate=0.02
+        for each OPEX item, which overrides inflation. This test modifies
+        the OPEX items to not have escalation_rate so they use inflation.
+        """
+        import copy
+
+        # Create CSV with increasing inflation rates
+        csv_path = tmp_path / "inflation.csv"
+        inflation_data = ["year,rate"]
+        for year in range(25):
+            # Inflation increases from 2% to 4% over 25 years
+            rate = 0.02 + (0.02 * year / 24)
+            inflation_data.append(f"{year},{rate:.4f}")
+        csv_path.write_text("\n".join(inflation_data))
+
+        # Create params without explicit escalation_rate (uses inflation)
+        params_no_escalation = copy.deepcopy(pv_params)
+        for opex_item in params_no_escalation["financial"]["opex"]["fixed"]:
+            opex_item.pop("escalation_rate", None)  # Remove explicit rate
+
+        # Test with CSV inflation
+        params_csv = copy.deepcopy(params_no_escalation)
+        params_csv["financial"]["inflation"] = {"csv_path": str(csv_path)}
+
+        # Test with constant inflation
+        params_const = copy.deepcopy(params_no_escalation)
+        params_const["financial"]["inflation"] = {"base_rate": 0.02}
+
+        model = FinancialModel(asset_type="pv")
+
+        # Calculate with CSV inflation
+        results_csv = model.calculate(params_csv, pv_monthly_volumes)
+
+        # Calculate with constant inflation
+        results_const = model.calculate(params_const, pv_monthly_volumes)
+
+        # Verify calculation completed successfully
+        assert results_csv["kpis"]["npv_project"] is not None
+        assert results_csv["kpis"]["lcoe"] > 0
+
+        # CSV inflation (increasing) should produce different OPEX
+        # Higher average inflation = higher OPEX over time = lower NPV
+        opex_csv = np.sum(results_csv["cash_flows"]["annual"]["opex_fixed"])
+        opex_const = np.sum(results_const["cash_flows"]["annual"]["opex_fixed"])
+
+        # With increasing inflation (avg ~3%), OPEX should be higher
+        assert opex_csv > opex_const, (
+            f"CSV inflation (increasing to 4%) should produce higher OPEX: "
+            f"{opex_csv:.0f} vs {opex_const:.0f}"
+        )
+
+        print(f"\n{'='*60}")
+        print("CSV Inflation Test Results")
+        print(f"{'='*60}")
+        print(f"  Constant 2% inflation OPEX total: {opex_const:,.0f} €")
+        print(f"  CSV inflation (2%→4%) OPEX total: {opex_csv:,.0f} €")
+        print(f"  Difference: {opex_csv - opex_const:,.0f} € ({(opex_csv/opex_const - 1)*100:.1f}%)")
+        print(f"{'='*60}")
+
+    def test_pv_with_curtailment(
+        self,
+        pv_params: dict[str, Any],
+        pv_monthly_volumes: np.ndarray,
+    ) -> None:
+        """
+        Test PV project with curtailment applied.
+
+        Validates that:
+        1. Curtailment reduces revenue proportionally
+        2. Curtailment statistics are calculated correctly
+        3. NPV decreases with curtailment
+        """
+        import copy
+
+        model = FinancialModel(asset_type="pv")
+
+        # Calculate without curtailment (baseline)
+        results_no_curtailment = model.calculate(pv_params, pv_monthly_volumes)
+
+        # Add 3% annual curtailment
+        params_with_curtailment = copy.deepcopy(pv_params)
+        params_with_curtailment["technical"]["curtailment_params"] = {
+            "mode": "annual_rates",
+            "rates": 0.03,  # 3% curtailment
+        }
+
+        results_with_curtailment = model.calculate(
+            params_with_curtailment, pv_monthly_volumes
+        )
+
+        # Verify curtailment statistics exist
+        assert "curtailment" in results_with_curtailment
+        curtailment = results_with_curtailment["curtailment"]
+
+        assert curtailment["enabled"] is True
+        assert curtailment["mode"] == "annual_rates"
+        assert curtailment["total_curtailment_rate"] == pytest.approx(0.03, abs=0.001)
+
+        # Revenue should be ~3% lower
+        revenue_no_curt = np.sum(results_no_curtailment["cash_flows"]["annual"]["revenue"])
+        revenue_with_curt = np.sum(results_with_curtailment["cash_flows"]["annual"]["revenue"])
+
+        revenue_reduction = 1 - revenue_with_curt / revenue_no_curt
+        assert revenue_reduction == pytest.approx(0.03, abs=0.001), (
+            f"Revenue reduction {revenue_reduction:.4f} not ~3%"
+        )
+
+        # NPV should be lower with curtailment
+        assert results_with_curtailment["kpis"]["npv_project"] < results_no_curtailment["kpis"]["npv_project"]
+
+        # Curtailed MWh should be positive
+        assert curtailment["total_curtailed_mwh"] > 0
+
+        print(f"\n{'='*60}")
+        print("PV Curtailment Integration Test Results")
+        print(f"{'='*60}")
+        print(f"  Curtailment Rate:     {curtailment['total_curtailment_rate']:.1%}")
+        print(f"  Total Curtailed:      {curtailment['total_curtailed_mwh']:,.0f} MWh")
+        print(f"  Revenue (no curt):    {revenue_no_curt:,.0f} €")
+        print(f"  Revenue (with curt):  {revenue_with_curt:,.0f} €")
+        print(f"  Revenue Reduction:    {revenue_reduction:.1%}")
+        print(f"  NPV (no curt):        {results_no_curtailment['kpis']['npv_project']:,.0f} €")
+        print(f"  NPV (with curt):      {results_with_curtailment['kpis']['npv_project']:,.0f} €")
+        print(f"{'='*60}")
+
+    def test_pv_with_curtailment_hourly(
+        self,
+        pv_params: dict[str, Any],
+    ) -> None:
+        """
+        Test PV project with curtailment using hourly calculation.
+
+        Validates hourly curtailment works correctly with the
+        calculate_hourly() method.
+        """
+        import copy
+
+        n_years = 25
+        n_hours = n_years * 8760
+
+        # Create simple hourly volumes (constant 100 kWh/h)
+        hourly_volumes = np.ones(n_hours) * 100
+
+        model = FinancialModel(asset_type="pv")
+
+        # Test with varying annual curtailment rates
+        params_with_curtailment = copy.deepcopy(pv_params)
+        rates = [0.01 * i for i in range(25)]  # 0% to 24% over 25 years
+        params_with_curtailment["technical"]["curtailment_params"] = {
+            "mode": "annual_rates",
+            "rates": rates,
+        }
+
+        results = model.calculate_hourly(params_with_curtailment, hourly_volumes)
+
+        # Verify curtailment statistics
+        assert "curtailment" in results
+        curtailment = results["curtailment"]
+
+        # Check annual rates match expected
+        np.testing.assert_allclose(
+            curtailment["annual_curtailment_rates"],
+            rates,
+            atol=0.001,
+        )
+
+        # Verify hourly volumes in output are curtailed
+        output_hourly = results["cash_flows"]["hourly"]["volume"]
+
+        # Year 0 should have no curtailment
+        year_0_avg = np.mean(output_hourly[:8760])
+        assert year_0_avg == pytest.approx(100.0, abs=0.01)
+
+        # Year 24 should have 24% curtailment
+        year_24_avg = np.mean(output_hourly[24 * 8760:])
+        assert year_24_avg == pytest.approx(76.0, abs=0.01)
+
+        print(f"\n{'='*60}")
+        print("PV Hourly Curtailment Test Results")
+        print(f"{'='*60}")
+        print(f"  Year 0 avg production:  {year_0_avg:.1f} kWh/h")
+        print(f"  Year 24 avg production: {year_24_avg:.1f} kWh/h")
+        print(f"  Total curtailment rate: {curtailment['total_curtailment_rate']:.1%}")
+        print(f"{'='*60}")
+
     @pytest.mark.skip(reason="Run manually to generate expected values")
     def test_generate_expected_values(
         self,

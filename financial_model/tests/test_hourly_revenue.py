@@ -122,6 +122,7 @@ class TestRevenueModelHourly:
         self, revenue_model: RevenueModel, hourly_volumes: np.ndarray
     ) -> None:
         """Test hourly revenue with fixed price."""
+        n_years = 2
         config = {
             "streams": [
                 {
@@ -141,9 +142,9 @@ class TestRevenueModelHourly:
         revenue = revenue_model.calculate_hourly(
             hourly_volumes=hourly_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=None,
-            n_years=2,
+            n_years=n_years,
         )
 
         # 100 kWh × €0.10/kWh = €10/hour
@@ -157,6 +158,7 @@ class TestRevenueModelHourly:
         price_curve: CSVPriceCurve,
     ) -> None:
         """Test hourly revenue with market prices."""
+        n_years = 2
         config = {
             "streams": [
                 {
@@ -175,9 +177,9 @@ class TestRevenueModelHourly:
         revenue = revenue_model.calculate_hourly(
             hourly_volumes=hourly_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=price_curve,
-            n_years=2,
+            n_years=n_years,
         )
 
         # Revenue should vary with market prices
@@ -218,7 +220,7 @@ class TestRevenueModelHourly:
         revenue = revenue_model.calculate_hourly(
             hourly_volumes=hourly_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=price_curve,
             n_years=n_years,
         )
@@ -235,6 +237,7 @@ class TestRevenueModelHourly:
         self, revenue_model: RevenueModel, hourly_volumes: np.ndarray
     ) -> None:
         """Test aggregation from hourly to annual."""
+        n_years = 2
         config = {
             "streams": [
                 {
@@ -254,9 +257,9 @@ class TestRevenueModelHourly:
         hourly_revenue = revenue_model.calculate_hourly(
             hourly_volumes=hourly_volumes,
             revenue_config=config,
-            inflation_rate=0.02,
+            inflation_rates=np.full(n_years, 0.02),
             price_curve=None,
-            n_years=2,
+            n_years=n_years,
         )
 
         annual = RevenueModel.aggregate_hourly_to_annual(hourly_revenue)
